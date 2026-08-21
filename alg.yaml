@@ -91,7 +91,7 @@ const SERVER =
 
 
 const WEBSOCKET_SERVER =
-    "https://win-deposit-emotional-delegation.trycloudflare.com";
+    "wss://win-deposit-emotional-delegation.trycloudflare.com/ws";
 
 
 /* ============================================================
