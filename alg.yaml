@@ -87,11 +87,11 @@ body {
  */
 
 const SERVER =
-    "https://albert-risks-appeals-wilson.trycloudflare.com";
+    "https://win-deposit-emotional-delegation.trycloudflare.com";
 
 
 const WEBSOCKET_SERVER =
-    "wss://albert-risks-appeals-wilson.trycloudflare.com/ws";
+    "https://win-deposit-emotional-delegation.trycloudflare.com";
 
 
 /* ============================================================
