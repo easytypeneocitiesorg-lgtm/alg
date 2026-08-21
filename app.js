@@ -160,7 +160,7 @@ body {
 // ============================================================
 
 const SERVER =
-    "https://YOUR_HOME_PC_ADDRESS";
+    "https://albert-risks-appeals-wilson.trycloudflare.com";
 
 
 // ============================================================
