@@ -68,7 +68,7 @@ body {
 <script>
 
 const SERVER =
-    "https://YOUR-CLOUDFLARE-TUNNEL.trycloudflare.com";
+    "https://win-deposit-emotional-delegation.trycloudflare.com";
 
 const WS_SERVER =
     SERVER.replace(
