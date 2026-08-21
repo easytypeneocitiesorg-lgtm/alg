@@ -2,710 +2,612 @@
 <html lang="en">
 
 <head>
-    <meta charset="UTF-8">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0"
-    >
+<title>Phone Remote</title>
 
-    <title>Phone Remote</title>
+<style>
+* {
+    box-sizing: border-box;
+}
 
-    <style>
-        * {
-            box-sizing: border-box;
-        }
+html,
+body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    background: #000;
+    overflow: hidden;
+}
 
-        html,
-        body {
-            width: 100%;
-            height: 100%;
-            margin: 0;
+body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
 
-            background: #000;
-            color: white;
+#screen {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+    background: #000;
+}
 
-            font-family: Arial, sans-serif;
+#status {
+    position: fixed;
+    top: 12px;
+    left: 12px;
 
-            overflow: hidden;
-        }
+    padding: 8px 12px;
 
-        #topbar {
-            height: 45px;
+    background: rgba(0, 0, 0, 0.75);
+    color: white;
 
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
+    border-radius: 6px;
 
-            padding: 0 15px;
+    font-family: monospace;
+    font-size: 14px;
 
-            background: #111;
-            border-bottom: 1px solid #222;
-        }
+    z-index: 100;
+}
 
-        #status {
-            font-size: 13px;
-            color: #888;
-        }
+#status.connected {
+    color: #6cff8d;
+}
 
-        #status.connected {
-            color: #6cff6c;
-        }
+#status.error {
+    color: #ff6c6c;
+}
+</style>
 
-        #phoneArea {
-            position: absolute;
-
-            top: 45px;
-            left: 0;
-            right: 0;
-            bottom: 0;
-
-            display: flex;
-            align-items: center;
-            justify-content: center;
-
-            background: #000;
-        }
-
-        #phone {
-            max-width: 100%;
-            max-height: 100%;
-
-            width: auto;
-            height: auto;
-
-            object-fit: contain;
-
-            user-select: none;
-
-            cursor: pointer;
-        }
-
-        #message {
-            position: absolute;
-
-            left: 50%;
-            top: 50%;
-
-            transform: translate(-50%, -50%);
-
-            color: #777;
-
-            text-align: center;
-        }
-    </style>
 </head>
 
 <body>
 
-    <div id="topbar">
+<div id="status">Connecting...</div>
 
-        <div>
-            Phone Remote
-        </div>
-
-        <div id="status">
-            Connecting...
-        </div>
-
-    </div>
-
-
-    <div id="phoneArea">
-
-        <div id="message">
-            Connecting to phone...
-        </div>
-
-        <video
-            id="phone"
-            autoplay
-            playsinline
-            muted
-        ></video>
-
-    </div>
-
+<video
+    id="screen"
+    autoplay
+    playsinline
+    muted
+></video>
 
 <script>
 
-    // ========================================================
-    // SERVER
-    // ========================================================
+/* ============================================================
+   CONFIGURATION
+   ============================================================ */
 
-    const SERVER =
-        "https://albert-risks-appeals-wilson.trycloudflare.com";
+/*
+ * This MUST be the URL of your Cloudflare tunnel
+ * pointing to remote.py.
+ */
 
+const SERVER =
+    "https://albert-risks-appeals-wilson.trycloudflare.com";
 
-    // ========================================================
-    // ELEMENTS
-    // ========================================================
 
-    const video =
-        document.getElementById("phone");
+const WEBSOCKET_SERVER =
+    "wss://albert-risks-appeals-wilson.trycloudflare.com/ws";
 
-    const status =
-        document.getElementById("status");
 
-    const message =
-        document.getElementById("message");
+/* ============================================================
+   ELEMENTS
+   ============================================================ */
 
+const screen =
+    document.getElementById("screen");
 
-    // ========================================================
-    // CONNECTION
-    // ========================================================
+const status =
+    document.getElementById("status");
 
-    let pc = null;
 
-    let socket = null;
+let websocket = null;
+let peer = null;
 
-    let phoneWidth = 1080;
-    let phoneHeight = 2340;
 
+/* ============================================================
+   STATUS
+   ============================================================ */
 
-    async function connect() {
+function setStatus(
+    text,
+    type = ""
+) {
 
-        try {
+    status.textContent = text;
 
-            status.textContent =
-                "Connecting...";
+    status.className = type;
 
+}
 
-            // ------------------------------------------------
-            // Get phone resolution
-            // ------------------------------------------------
 
-            const healthResponse =
-                await fetch(
-                    SERVER + "/health"
-                );
+/* ============================================================
+   CONNECT WEBSOCKET
+   ============================================================ */
 
+function connectWebSocket() {
 
-            if (!healthResponse.ok) {
+    websocket =
+        new WebSocket(
+            WEBSOCKET_SERVER
+        );
 
-                throw new Error(
-                    "Server health check failed."
-                );
-            }
 
+    websocket.onopen = () => {
 
-            const info =
-                await healthResponse.json();
+        console.log(
+            "Control WebSocket connected."
+        );
 
+    };
 
-            phoneWidth =
-                info.phone_width;
 
-            phoneHeight =
-                info.phone_height;
+    websocket.onclose = () => {
 
+        console.log(
+            "Control WebSocket disconnected."
+        );
 
-            // ------------------------------------------------
-            // WebSocket
-            // ------------------------------------------------
+        setTimeout(
+            connectWebSocket,
+            2000
+        );
 
-            const websocketURL =
-                SERVER
-                    .replace(
-                        "https://",
-                        "wss://"
-                    )
-                    .replace(
-                        "http://",
-                        "ws://"
-                    )
-                    + "/ws";
+    };
 
 
-            socket =
-                new WebSocket(
-                    websocketURL
-                );
+    websocket.onerror = error => {
 
+        console.error(
+            "WebSocket error:",
+            error
+        );
 
-            socket.onopen =
-                function() {
+    };
 
-                    console.log(
-                        "WebSocket connected."
-                    );
+}
 
-                };
 
+/* ============================================================
+   SEND CONTROL EVENT
+   ============================================================ */
 
-            socket.onerror =
-                function(error) {
-
-                    console.error(
-                        "WebSocket error:",
-                        error
-                    );
-
-                };
-
-
-            socket.onclose =
-                function() {
-
-                    status.textContent =
-                        "Disconnected";
-
-                    status.classList.remove(
-                        "connected"
-                    );
-
-                };
-
-
-            // ------------------------------------------------
-            // WebRTC
-            // ------------------------------------------------
-
-            pc =
-                new RTCPeerConnection();
-
-
-            pc.ontrack =
-                function(event) {
-
-                    console.log(
-                        "Received video track."
-                    );
-
-
-                    if (
-                        event.streams &&
-                        event.streams.length > 0
-                    ) {
-
-                        video.srcObject =
-                            event.streams[0];
-
-                    }
-
-
-                    message.style.display =
-                        "none";
-
-
-                    status.textContent =
-                        "Connected";
-
-                    status.classList.add(
-                        "connected"
-                    );
-
-                };
-
-
-            pc.onconnectionstatechange =
-                function() {
-
-                    console.log(
-                        "WebRTC state:",
-                        pc.connectionState
-                    );
-
-
-                    if (
-                        pc.connectionState ===
-                        "connected"
-                    ) {
-
-                        status.textContent =
-                            "Connected";
-
-                        status.classList.add(
-                            "connected"
-                        );
-
-                    }
-
-
-                    if (
-                        pc.connectionState ===
-                        "failed"
-                    ) {
-
-                        status.textContent =
-                            "Connection failed";
-
-                        status.classList.remove(
-                            "connected"
-                        );
-
-                    }
-
-                };
-
-
-            // Tell Python that we only want video.
-            pc.addTransceiver(
-                "video",
-                {
-                    direction: "recvonly"
-                }
-            );
-
-
-            // ------------------------------------------------
-            // Create WebRTC offer
-            // ------------------------------------------------
-
-            const offer =
-                await pc.createOffer();
-
-
-            await pc.setLocalDescription(
-                offer
-            );
-
-
-            // ------------------------------------------------
-            // Send offer to Python
-            // ------------------------------------------------
-
-            const offerResponse =
-                await fetch(
-                    SERVER + "/offer",
-                    {
-
-                        method: "POST",
-
-                        headers: {
-                            "Content-Type":
-                                "application/json"
-                        },
-
-                        body: JSON.stringify({
-
-                            sdp:
-                                pc.localDescription.sdp,
-
-                            type:
-                                pc.localDescription.type
-
-                        })
-
-                    }
-                );
-
-
-            if (!offerResponse.ok) {
-
-                throw new Error(
-                    "WebRTC offer failed."
-                );
-
-            }
-
-
-            const answer =
-                await offerResponse.json();
-
-
-            await pc.setRemoteDescription(
-                answer
-            );
-
-
-        } catch (error) {
-
-            console.error(
-                "Connection error:",
-                error
-            );
-
-
-            status.textContent =
-                "Connection failed";
-
-
-            message.textContent =
-                "Could not connect to phone.";
-
-        }
+function sendControl(
+    data
+) {
+
+    if (
+        !websocket ||
+        websocket.readyState !==
+        WebSocket.OPEN
+    ) {
+
+        return;
 
     }
 
+    websocket.send(
+        JSON.stringify(data)
+    );
 
-    // ========================================================
-    // PHONE COORDINATES
-    // ========================================================
+}
 
-    function getPhoneCoordinates(event) {
 
-        const rect =
-            video.getBoundingClientRect();
+/* ============================================================
+   START WEBRTC VIDEO
+   ============================================================ */
+
+async function startVideo() {
+
+    setStatus(
+        "Connecting to scrcpy..."
+    );
+
+
+    peer =
+        new RTCPeerConnection();
+
+
+    /*
+     * We only receive video.
+     */
+
+    peer.addTransceiver(
+        "video",
+        {
+            direction: "recvonly"
+        }
+    );
+
+
+    /*
+     * WebRTC gives us the actual live video
+     * stream from remote.py.
+     */
+
+    peer.ontrack = event => {
+
+        console.log(
+            "Received video track."
+        );
 
 
         if (
-            rect.width === 0 ||
-            rect.height === 0
+            event.streams &&
+            event.streams.length > 0
         ) {
 
-            return null;
+            screen.srcObject =
+                event.streams[0];
 
         }
 
-
-        const x =
-            (
-                event.clientX -
-                rect.left
-            )
-            / rect.width
-            * phoneWidth;
+    };
 
 
-        const y =
-            (
-                event.clientY -
-                rect.top
-            )
-            / rect.height
-            * phoneHeight;
+    peer.onconnectionstatechange = () => {
+
+        console.log(
+            "WebRTC state:",
+            peer.connectionState
+        );
 
 
-        return {
+        switch (
+            peer.connectionState
+        ) {
 
-            x: Math.round(x),
+            case "connected":
 
-            y: Math.round(y)
+                setStatus(
+                    "Connected",
+                    "connected"
+                );
 
-        };
+                break;
+
+
+            case "connecting":
+
+                setStatus(
+                    "Connecting..."
+                );
+
+                break;
+
+
+            case "disconnected":
+
+                setStatus(
+                    "Disconnected",
+                    "error"
+                );
+
+                break;
+
+
+            case "failed":
+
+                setStatus(
+                    "Connection failed",
+                    "error"
+                );
+
+                break;
+
+        }
+
+    };
+
+
+    /*
+     * Create WebRTC offer.
+     */
+
+    const offer =
+        await peer.createOffer();
+
+
+    await peer.setLocalDescription(
+        offer
+    );
+
+
+    /*
+     * Send offer to Python.
+     */
+
+    const response =
+        await fetch(
+            SERVER + "/offer",
+            {
+                method: "POST",
+
+                headers: {
+                    "Content-Type":
+                        "application/json"
+                },
+
+                body: JSON.stringify({
+                    sdp:
+                        peer.localDescription.sdp,
+
+                    type:
+                        peer.localDescription.type
+                })
+            }
+        );
+
+
+    if (!response.ok) {
+
+        throw new Error(
+            "Server returned HTTP " +
+            response.status
+        );
 
     }
 
 
-    // ========================================================
-    // MOUSE → TOUCH
-    // ========================================================
-
-    let touchStart = null;
+    const answer =
+        await response.json();
 
 
-    video.addEventListener(
-        "mousedown",
-        function(event) {
-
-            event.preventDefault();
-
-
-            touchStart =
-                getPhoneCoordinates(
-                    event
-                );
-
-        }
+    await peer.setRemoteDescription(
+        new RTCSessionDescription(
+            answer
+        )
     );
 
 
-    video.addEventListener(
-        "mouseup",
-        function(event) {
-
-            event.preventDefault();
-
-
-            if (!touchStart) {
-                return;
-            }
-
-
-            const end =
-                getPhoneCoordinates(
-                    event
-                );
-
-
-            if (!end) {
-                return;
-            }
-
-
-            const distanceX =
-                Math.abs(
-                    end.x -
-                    touchStart.x
-                );
-
-
-            const distanceY =
-                Math.abs(
-                    end.y -
-                    touchStart.y
-                );
-
-
-            // Small movement = tap
-            if (
-                distanceX < 20 &&
-                distanceY < 20
-            ) {
-
-                send({
-
-                    type: "tap",
-
-                    x: end.x,
-
-                    y: end.y
-
-                });
-
-            }
-
-            // Large movement = swipe
-            else {
-
-                send({
-
-                    type: "swipe",
-
-                    x1: touchStart.x,
-
-                    y1: touchStart.y,
-
-                    x2: end.x,
-
-                    y2: end.y,
-
-                    duration: 250
-
-                });
-
-            }
-
-
-            touchStart = null;
-
-        }
+    console.log(
+        "WebRTC negotiation complete."
     );
 
-
-    // ========================================================
-    // KEYBOARD
-    // ========================================================
-
-    document.addEventListener(
-        "keydown",
-        function(event) {
-
-            // Don't intercept browser shortcuts.
-            if (
-                event.ctrlKey ||
-                event.altKey ||
-                event.metaKey
-            ) {
-
-                return;
-
-            }
+}
 
 
-            const androidKeys = {
+/* ============================================================
+   GET PHONE COORDINATES
+   ============================================================ */
 
-                "Backspace":
-                    "KEYCODE_DEL",
+function getPhoneCoordinates(
+    event
+) {
 
-                "Enter":
-                    "KEYCODE_ENTER",
-
-                "Escape":
-                    "KEYCODE_ESCAPE",
-
-                "ArrowUp":
-                    "KEYCODE_DPAD_UP",
-
-                "ArrowDown":
-                    "KEYCODE_DPAD_DOWN",
-
-                "ArrowLeft":
-                    "KEYCODE_DPAD_LEFT",
-
-                "ArrowRight":
-                    "KEYCODE_DPAD_RIGHT",
-
-                "Tab":
-                    "KEYCODE_TAB",
-
-                " ":
-                    "KEYCODE_SPACE"
-
-            };
+    const rect =
+        screen.getBoundingClientRect();
 
 
-            const androidKey =
-                androidKeys[event.key];
+    const videoWidth =
+        screen.videoWidth;
+
+    const videoHeight =
+        screen.videoHeight;
 
 
-            if (androidKey) {
+    if (
+        !videoWidth ||
+        !videoHeight
+    ) {
 
-                send({
+        return null;
 
-                    type: "key",
-
-                    key: androidKey
-
-                });
-
-
-                event.preventDefault();
-
-                return;
-
-            }
+    }
 
 
-            // Regular characters
-            if (
-                event.key.length === 1
-            ) {
+    /*
+     * The video uses object-fit: contain.
+     *
+     * Calculate the actual displayed video
+     * area so clicks aren't offset by black bars.
+     */
 
-                send({
+    const scale =
+        Math.min(
 
-                    type: "text",
+            rect.width / videoWidth,
 
-                    text: event.key
+            rect.height / videoHeight
 
-                });
-
-
-                event.preventDefault();
-
-            }
-
-        }
-    );
+        );
 
 
-    // ========================================================
-    // SEND TO PYTHON
-    // ========================================================
+    const displayedWidth =
+        videoWidth * scale;
 
-    function send(data) {
+    const displayedHeight =
+        videoHeight * scale;
 
-        if (
-            socket &&
-            socket.readyState ===
-            WebSocket.OPEN
-        ) {
 
-            socket.send(
-                JSON.stringify(data)
+    const offsetX =
+        (
+            rect.width -
+            displayedWidth
+        ) / 2;
+
+
+    const offsetY =
+        (
+            rect.height -
+            displayedHeight
+        ) / 2;
+
+
+    const x =
+        (
+            event.clientX -
+            rect.left -
+            offsetX
+        ) / scale;
+
+
+    const y =
+        (
+            event.clientY -
+            rect.top -
+            offsetY
+        ) / scale;
+
+
+    /*
+     * Ignore clicks in the black bars.
+     */
+
+    if (
+        x < 0 ||
+        y < 0 ||
+        x > videoWidth ||
+        y > videoHeight
+    ) {
+
+        return null;
+
+    }
+
+
+    return {
+        x: Math.round(x),
+        y: Math.round(y)
+    };
+
+}
+
+
+/* ============================================================
+   LEFT CLICK
+   ============================================================ */
+
+screen.addEventListener(
+    "click",
+    event => {
+
+        const pos =
+            getPhoneCoordinates(
+                event
             );
 
-        }
+
+        if (!pos)
+            return;
+
+
+        sendControl({
+
+            type: "click",
+
+            x: pos.x,
+
+            y: pos.y
+
+        });
 
     }
+);
 
 
-    // ========================================================
-    // START
-    // ========================================================
+/* ============================================================
+   RIGHT CLICK
+   ============================================================ */
 
-    connect();
+screen.addEventListener(
+    "contextmenu",
+    event => {
+
+        event.preventDefault();
+
+
+        const pos =
+            getPhoneCoordinates(
+                event
+            );
+
+
+        if (!pos)
+            return;
+
+
+        sendControl({
+
+            type: "rightclick",
+
+            x: pos.x,
+
+            y: pos.y
+
+        });
+
+    }
+);
+
+
+/* ============================================================
+   KEYBOARD
+   ============================================================ */
+
+document.addEventListener(
+    "keydown",
+    event => {
+
+        /*
+         * Don't interfere with actual
+         * text fields if we add any later.
+         */
+
+        if (
+            event.target.tagName ===
+            "INPUT" ||
+
+            event.target.tagName ===
+            "TEXTAREA"
+        ) {
+
+            return;
+
+        }
+
+
+        event.preventDefault();
+
+
+        sendControl({
+
+            type: "key",
+
+            key: event.key
+
+        });
+
+    }
+);
+
+
+/* ============================================================
+   START
+   ============================================================ */
+
+connectWebSocket();
+
+
+startVideo().catch(
+    error => {
+
+        console.error(
+            "Video error:",
+            error
+        );
+
+        setStatus(
+            "Could not connect to scrcpy",
+            "error"
+        );
+
+    }
+);
 
 </script>
 
