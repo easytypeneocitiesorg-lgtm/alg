@@ -1,17 +1,21 @@
 html,
 body {
+
     width: 100%;
     height: 100%;
+
     margin: 0;
 
-    background: #000;
+    background: black;
 
     overflow: hidden;
 
     font-family: Arial, sans-serif;
 }
 
+
 #passwordOverlay {
+
     position: fixed;
 
     inset: 0;
@@ -21,62 +25,75 @@ body {
     align-items: center;
     justify-content: center;
 
-    background: #000;
+    background: black;
 }
 
+
 #passwordOverlay.hidden {
+
     display: none;
 }
 
+
 #passwordBox {
+
     width: 280px;
 
     display: flex;
+
     flex-direction: column;
 
     gap: 10px;
 }
 
+
 #passwordInput {
-    box-sizing: border-box;
 
     width: 100%;
+
+    box-sizing: border-box;
 
     padding: 12px;
 
     border: 1px solid #333;
+
     border-radius: 6px;
 
-    background: #111;
-    color: #fff;
-
     outline: none;
+
+    background: #111;
+
+    color: white;
 }
 
-#passwordInput:focus {
-    border-color: #555;
-}
 
 #passwordButton {
+
     padding: 12px;
 
     border: none;
+
     border-radius: 6px;
 
     background: #222;
-    color: #fff;
+
+    color: white;
 
     cursor: pointer;
 }
 
+
 #passwordButton:hover {
+
     background: #333;
 }
 
+
 #passwordError {
+
     min-height: 18px;
 
-    text-align: center;
-
     color: #ff4444;
+
+    text-align: center;
 }
