@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Phone Remote</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+
+            background: #000;
+            color: white;
+
+            font-family: Arial, sans-serif;
+
+            overflow: hidden;
+        }
+
+        #topbar {
+            height: 45px;
+
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+
+            padding: 0 15px;
+
+            background: #111;
+            border-bottom: 1px solid #222;
+        }
+
+        #status {
+            font-size: 13px;
+            color: #888;
+        }
+
+        #status.connected {
+            color: #6cff6c;
+        }
+
+        #phoneArea {
+            position: absolute;
+
+            top: 45px;
+            left: 0;
+            right: 0;
+            bottom: 0;
+
+            display: flex;
+            align-items: center;
+            justify-content: center;
+
+            background: #000;
+        }
+
+        #phone {
+            max-width: 100%;
+            max-height: 100%;
+
+            width: auto;
+            height: auto;
+
+            object-fit: contain;
+
+            user-select: none;
+
+            cursor: pointer;
+        }
+
+        #message {
+            position: absolute;
+
+            left: 50%;
+            top: 50%;
+
+            transform: translate(-50%, -50%);
+
+            color: #777;
+
+            text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="topbar">
+
+        <div>
+            Phone Remote
+        </div>
+
+        <div id="status">
+            Connecting...
+        </div>
+
+    </div>
+
+
+    <div id="phoneArea">
+
+        <div id="message">
+            Connecting to phone...
+        </div>
+
+        <video
+            id="phone"
+            autoplay
+            playsinline
+            muted
+        ></video>
+
+    </div>
+
+
+<script>
+
+    // ========================================================
+    // SERVER
+    // ========================================================
+
+    const SERVER =
+        "https://albert-risks-appeals-wilson.trycloudflare.com";
+
+
+    // ========================================================
+    // ELEMENTS
+    // ========================================================
+
+    const video =
+        document.getElementById("phone");
+
+    const status =
+        document.getElementById("status");
+
+    const message =
+        document.getElementById("message");
+
+
+    // ========================================================
+    // CONNECTION
+    // ========================================================
+
+    let pc = null;
+
+    let socket = null;
+
+    let phoneWidth = 1080;
+    let phoneHeight = 2340;
+
+
+    async function connect() {
+
+        try {
+
+            status.textContent =
+                "Connecting...";
+
+
+            // ------------------------------------------------
+            // Get phone resolution
+            // ------------------------------------------------
+
+            const healthResponse =
+                await fetch(
+                    SERVER + "/health"
+                );
+
+
+            if (!healthResponse.ok) {
+
+                throw new Error(
+                    "Server health check failed."
+                );
+            }
+
+
+            const info =
+                await healthResponse.json();
+
+
+            phoneWidth =
+                info.phone_width;
+
+            phoneHeight =
+                info.phone_height;
+
+
+            // ------------------------------------------------
+            // WebSocket
+            // ------------------------------------------------
+
+            const websocketURL =
+                SERVER
+                    .replace(
+                        "https://",
+                        "wss://"
+                    )
+                    .replace(
+                        "http://",
+                        "ws://"
+                    )
+                    + "/ws";
+
+
+            socket =
+                new WebSocket(
+                    websocketURL
+                );
+
+
+            socket.onopen =
+                function() {
+
+                    console.log(
+                        "WebSocket connected."
+                    );
+
+                };
+
+
+            socket.onerror =
+                function(error) {
+
+                    console.error(
+                        "WebSocket error:",
+                        error
+                    );
+
+                };
+
+
+            socket.onclose =
+                function() {
+
+                    status.textContent =
+                        "Disconnected";
+
+                    status.classList.remove(
+                        "connected"
+                    );
+
+                };
+
+
+            // ------------------------------------------------
+            // WebRTC
+            // ------------------------------------------------
+
+            pc =
+                new RTCPeerConnection();
+
+
+            pc.ontrack =
+                function(event) {
+
+                    console.log(
+                        "Received video track."
+                    );
+
+
+                    if (
+                        event.streams &&
+                        event.streams.length > 0
+                    ) {
+
+                        video.srcObject =
+                            event.streams[0];
+
+                    }
+
+
+                    message.style.display =
+                        "none";
+
+
+                    status.textContent =
+                        "Connected";
+
+                    status.classList.add(
+                        "connected"
+                    );
+
+                };
+
+
+            pc.onconnectionstatechange =
+                function() {
+
+                    console.log(
+                        "WebRTC state:",
+                        pc.connectionState
+                    );
+
+
+                    if (
+                        pc.connectionState ===
+                        "connected"
+                    ) {
+
+                        status.textContent =
+                            "Connected";
+
+                        status.classList.add(
+                            "connected"
+                        );
+
+                    }
+
+
+                    if (
+                        pc.connectionState ===
+                        "failed"
+                    ) {
+
+                        status.textContent =
+                            "Connection failed";
+
+                        status.classList.remove(
+                            "connected"
+                        );
+
+                    }
+
+                };
+
+
+            // Tell Python that we only want video.
+            pc.addTransceiver(
+                "video",
+                {
+                    direction: "recvonly"
+                }
+            );
+
+
+            // ------------------------------------------------
+            // Create WebRTC offer
+            // ------------------------------------------------
+
+            const offer =
+                await pc.createOffer();
+
+
+            await pc.setLocalDescription(
+                offer
+            );
+
+
+            // ------------------------------------------------
+            // Send offer to Python
+            // ------------------------------------------------
+
+            const offerResponse =
+                await fetch(
+                    SERVER + "/offer",
+                    {
+
+                        method: "POST",
+
+                        headers: {
+                            "Content-Type":
+                                "application/json"
+                        },
+
+                        body: JSON.stringify({
+
+                            sdp:
+                                pc.localDescription.sdp,
+
+                            type:
+                                pc.localDescription.type
+
+                        })
+
+                    }
+                );
+
+
+            if (!offerResponse.ok) {
+
+                throw new Error(
+                    "WebRTC offer failed."
+                );
+
+            }
+
+
+            const answer =
+                await offerResponse.json();
+
+
+            await pc.setRemoteDescription(
+                answer
+            );
+
+
+        } catch (error) {
+
+            console.error(
+                "Connection error:",
+                error
+            );
+
+
+            status.textContent =
+                "Connection failed";
+
+
+            message.textContent =
+                "Could not connect to phone.";
+
+        }
+
+    }
+
+
+    // ========================================================
+    // PHONE COORDINATES
+    // ========================================================
+
+    function getPhoneCoordinates(event) {
+
+        const rect =
+            video.getBoundingClientRect();
+
+
+        if (
+            rect.width === 0 ||
+            rect.height === 0
+        ) {
+
+            return null;
+
+        }
+
+
+        const x =
+            (
+                event.clientX -
+                rect.left
+            )
+            / rect.width
+            * phoneWidth;
+
+
+        const y =
+            (
+                event.clientY -
+                rect.top
+            )
+            / rect.height
+            * phoneHeight;
+
+
+        return {
+
+            x: Math.round(x),
+
+            y: Math.round(y)
+
+        };
+
+    }
+
+
+    // ========================================================
+    // MOUSE → TOUCH
+    // ========================================================
+
+    let touchStart = null;
+
+
+    video.addEventListener(
+        "mousedown",
+        function(event) {
+
+            event.preventDefault();
+
+
+            touchStart =
+                getPhoneCoordinates(
+                    event
+                );
+
+        }
+    );
+
+
+    video.addEventListener(
+        "mouseup",
+        function(event) {
+
+            event.preventDefault();
+
+
+            if (!touchStart) {
+                return;
+            }
+
+
+            const end =
+                getPhoneCoordinates(
+                    event
+                );
+
+
+            if (!end) {
+                return;
+            }
+
+
+            const distanceX =
+                Math.abs(
+                    end.x -
+                    touchStart.x
+                );
+
+
+            const distanceY =
+                Math.abs(
+                    end.y -
+                    touchStart.y
+                );
+
+
+            // Small movement = tap
+            if (
+                distanceX < 20 &&
+                distanceY < 20
+            ) {
+
+                send({
+
+                    type: "tap",
+
+                    x: end.x,
+
+                    y: end.y
+
+                });
+
+            }
+
+            // Large movement = swipe
+            else {
+
+                send({
+
+                    type: "swipe",
+
+                    x1: touchStart.x,
+
+                    y1: touchStart.y,
+
+                    x2: end.x,
+
+                    y2: end.y,
+
+                    duration: 250
+
+                });
+
+            }
+
+
+            touchStart = null;
+
+        }
+    );
+
+
+    // ========================================================
+    // KEYBOARD
+    // ========================================================
+
+    document.addEventListener(
+        "keydown",
+        function(event) {
+
+            // Don't intercept browser shortcuts.
+            if (
+                event.ctrlKey ||
+                event.altKey ||
+                event.metaKey
+            ) {
+
+                return;
+
+            }
+
+
+            const androidKeys = {
+
+                "Backspace":
+                    "KEYCODE_DEL",
+
+                "Enter":
+                    "KEYCODE_ENTER",
+
+                "Escape":
+                    "KEYCODE_ESCAPE",
+
+                "ArrowUp":
+                    "KEYCODE_DPAD_UP",
+
+                "ArrowDown":
+                    "KEYCODE_DPAD_DOWN",
+
+                "ArrowLeft":
+                    "KEYCODE_DPAD_LEFT",
+
+                "ArrowRight":
+                    "KEYCODE_DPAD_RIGHT",
+
+                "Tab":
+                    "KEYCODE_TAB",
+
+                " ":
+                    "KEYCODE_SPACE"
+
+            };
+
+
+            const androidKey =
+                androidKeys[event.key];
+
+
+            if (androidKey) {
+
+                send({
+
+                    type: "key",
+
+                    key: androidKey
+
+                });
+
+
+                event.preventDefault();
+
+                return;
+
+            }
+
+
+            // Regular characters
+            if (
+                event.key.length === 1
+            ) {
+
+                send({
+
+                    type: "text",
+
+                    text: event.key
+
+                });
+
+
+                event.preventDefault();
+
+            }
+
+        }
+    );
+
+
+    // ========================================================
+    // SEND TO PYTHON
+    // ========================================================
+
+    function send(data) {
+
+        if (
+            socket &&
+            socket.readyState ===
+            WebSocket.OPEN
+        ) {
+
+            socket.send(
+                JSON.stringify(data)
+            );
+
+        }
+
+    }
+
+
+    // ========================================================
+    // START
+    // ========================================================
+
+    connect();
+
+</script>
+
+</body>
+
+</html>
