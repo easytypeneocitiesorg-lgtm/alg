@@ -1,141 +1,118 @@
 <!DOCTYPE html>
-<html lang="en">
-
+<html>
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>Phone Remote</title>
+<title>Remote Desktop</title>
 
 <style>
-* {
-    box-sizing: border-box;
-}
 
 html,
 body {
     margin: 0;
     width: 100%;
     height: 100%;
-    background: #000;
     overflow: hidden;
-}
-
-body {
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    background: black;
 }
 
 #screen {
-    width: 100%;
-    height: 100%;
+    width: 100vw;
+    height: 100vh;
+
     object-fit: contain;
+
     display: block;
-    background: #000;
+
+    background: black;
+
+    cursor: default;
 }
 
 #status {
     position: fixed;
-    top: 12px;
-    left: 12px;
+
+    top: 10px;
+    left: 10px;
 
     padding: 8px 12px;
 
-    background: rgba(0, 0, 0, 0.75);
+    background: rgba(0,0,0,.7);
+
     color: white;
 
-    border-radius: 6px;
-
     font-family: monospace;
-    font-size: 14px;
 
-    z-index: 100;
+    font-size: 13px;
+
+    border-radius: 5px;
+
+    z-index: 10;
 }
 
-#status.connected {
-    color: #6cff8d;
-}
-
-#status.error {
-    color: #ff6c6c;
-}
 </style>
-
 </head>
 
 <body>
 
-<div id="status">Connecting...</div>
+<div id="status">
+    Connecting...
+</div>
 
 <video
     id="screen"
     autoplay
     playsinline
-    muted
 ></video>
 
 <script>
 
-/* ============================================================
-   CONFIGURATION
-   ============================================================ */
-
-/*
- * This MUST be the URL of your Cloudflare tunnel
- * pointing to remote.py.
- */
-
 const SERVER =
-    "https://win-deposit-emotional-delegation.trycloudflare.com";
+    "https://YOUR-CLOUDFLARE-TUNNEL.trycloudflare.com";
+
+const WS_SERVER =
+    SERVER.replace(
+        "https://",
+        "wss://"
+    );
 
 
-const WEBSOCKET_SERVER =
-    "wss://win-deposit-emotional-delegation.trycloudflare.com/ws";
-
-
-/* ============================================================
-   ELEMENTS
-   ============================================================ */
-
-const screen =
-    document.getElementById("screen");
+const video =
+    document.getElementById(
+        "screen"
+    );
 
 const status =
-    document.getElementById("status");
+    document.getElementById(
+        "status"
+    );
 
 
 let websocket = null;
 let peer = null;
 
 
-/* ============================================================
+/* ==========================================================
    STATUS
-   ============================================================ */
+========================================================== */
 
-function setStatus(
-    text,
-    type = ""
-) {
+function setStatus(text) {
 
     status.textContent = text;
-
-    status.className = type;
 
 }
 
 
-/* ============================================================
-   CONNECT WEBSOCKET
-   ============================================================ */
+/* ==========================================================
+   WEBSOCKET
+========================================================== */
 
 function connectWebSocket() {
 
     websocket =
         new WebSocket(
-            WEBSOCKET_SERVER
+            WS_SERVER
         );
-
 
     websocket.onopen = () => {
 
@@ -145,20 +122,13 @@ function connectWebSocket() {
 
     };
 
-
     websocket.onclose = () => {
 
         console.log(
             "Control WebSocket disconnected."
         );
 
-        setTimeout(
-            connectWebSocket,
-            2000
-        );
-
     };
-
 
     websocket.onerror = error => {
 
@@ -172,49 +142,92 @@ function connectWebSocket() {
 }
 
 
-/* ============================================================
+/* ==========================================================
    SEND CONTROL EVENT
-   ============================================================ */
+========================================================== */
 
-function sendControl(
-    data
-) {
+function send(data) {
 
     if (
-        !websocket ||
-        websocket.readyState !==
+        websocket &&
+        websocket.readyState ===
         WebSocket.OPEN
     ) {
 
-        return;
+        websocket.send(
+            JSON.stringify(data)
+        );
 
     }
-
-    websocket.send(
-        JSON.stringify(data)
-    );
 
 }
 
 
-/* ============================================================
-   START WEBRTC VIDEO
-   ============================================================ */
+/* ==========================================================
+   WEBRTC
+========================================================== */
 
 async function startVideo() {
 
     setStatus(
-        "Connecting to scrcpy..."
+        "Connecting to PC..."
     );
-
 
     peer =
         new RTCPeerConnection();
 
+    peer.ontrack = event => {
+
+        console.log(
+            "Received video track."
+        );
+
+        video.srcObject =
+            event.streams[0];
+
+        setStatus(
+            "Connected"
+        );
+
+    };
+
+
+    peer.onconnectionstatechange =
+        () => {
+
+            console.log(
+                "WebRTC:",
+                peer.connectionState
+            );
+
+            if (
+                peer.connectionState ===
+                "connected"
+            ) {
+
+                setStatus(
+                    "Connected"
+                );
+
+            }
+
+            if (
+                peer.connectionState ===
+                "failed"
+            ) {
+
+                setStatus(
+                    "WebRTC connection failed"
+                );
+
+            }
+
+        };
+
 
     /*
-     * We only receive video.
-     */
+       We only want to RECEIVE video.
+    */
 
     peer.addTransceiver(
         "video",
@@ -224,93 +237,8 @@ async function startVideo() {
     );
 
 
-    /*
-     * WebRTC gives us the actual live video
-     * stream from remote.py.
-     */
-
-    peer.ontrack = event => {
-
-        console.log(
-            "Received video track."
-        );
-
-
-        if (
-            event.streams &&
-            event.streams.length > 0
-        ) {
-
-            screen.srcObject =
-                event.streams[0];
-
-        }
-
-    };
-
-
-    peer.onconnectionstatechange = () => {
-
-        console.log(
-            "WebRTC state:",
-            peer.connectionState
-        );
-
-
-        switch (
-            peer.connectionState
-        ) {
-
-            case "connected":
-
-                setStatus(
-                    "Connected",
-                    "connected"
-                );
-
-                break;
-
-
-            case "connecting":
-
-                setStatus(
-                    "Connecting..."
-                );
-
-                break;
-
-
-            case "disconnected":
-
-                setStatus(
-                    "Disconnected",
-                    "error"
-                );
-
-                break;
-
-
-            case "failed":
-
-                setStatus(
-                    "Connection failed",
-                    "error"
-                );
-
-                break;
-
-        }
-
-    };
-
-
-    /*
-     * Create WebRTC offer.
-     */
-
     const offer =
         await peer.createOffer();
-
 
     await peer.setLocalDescription(
         offer
@@ -318,13 +246,56 @@ async function startVideo() {
 
 
     /*
-     * Send offer to Python.
-     */
+       Wait for ICE gathering.
+    */
+
+    await new Promise(
+        resolve => {
+
+            if (
+                peer.iceGatheringState ===
+                "complete"
+            ) {
+
+                resolve();
+
+                return;
+            }
+
+
+            function check() {
+
+                if (
+                    peer.iceGatheringState ===
+                    "complete"
+                ) {
+
+                    peer.removeEventListener(
+                        "icegatheringstatechange",
+                        check
+                    );
+
+                    resolve();
+
+                }
+
+            }
+
+
+            peer.addEventListener(
+                "icegatheringstatechange",
+                check
+            );
+
+        }
+    );
+
 
     const response =
         await fetch(
             SERVER + "/offer",
             {
+
                 method: "POST",
 
                 headers: {
@@ -332,13 +303,10 @@ async function startVideo() {
                         "application/json"
                 },
 
-                body: JSON.stringify({
-                    sdp:
-                        peer.localDescription.sdp,
+                body: JSON.stringify(
+                    peer.localDescription
+                )
 
-                    type:
-                        peer.localDescription.type
-                })
             }
         );
 
@@ -346,7 +314,7 @@ async function startVideo() {
     if (!response.ok) {
 
         throw new Error(
-            "Server returned HTTP " +
+            "Server returned " +
             response.status
         );
 
@@ -358,9 +326,7 @@ async function startVideo() {
 
 
     await peer.setRemoteDescription(
-        new RTCSessionDescription(
-            answer
-        )
+        answer
     );
 
 
@@ -371,23 +337,28 @@ async function startVideo() {
 }
 
 
-/* ============================================================
-   GET PHONE COORDINATES
-   ============================================================ */
+/* ==========================================================
+   MOUSE COORDINATES
+========================================================== */
 
-function getPhoneCoordinates(
-    event
-) {
+function getScreenCoordinates(event) {
 
     const rect =
-        screen.getBoundingClientRect();
+        video.getBoundingClientRect();
 
+
+    /*
+       Video uses object-fit: contain.
+
+       Work out the actual displayed
+       video rectangle inside the element.
+    */
 
     const videoWidth =
-        screen.videoWidth;
+        video.videoWidth;
 
     const videoHeight =
-        screen.videoHeight;
+        video.videoHeight;
 
 
     if (
@@ -400,42 +371,67 @@ function getPhoneCoordinates(
     }
 
 
-    /*
-     * The video uses object-fit: contain.
-     *
-     * Calculate the actual displayed video
-     * area so clicks aren't offset by black bars.
-     */
+    const elementWidth =
+        rect.width;
 
-    const scale =
-        Math.min(
-
-            rect.width / videoWidth,
-
-            rect.height / videoHeight
-
-        );
+    const elementHeight =
+        rect.height;
 
 
-    const displayedWidth =
-        videoWidth * scale;
+    const videoAspect =
+        videoWidth /
+        videoHeight;
 
-    const displayedHeight =
-        videoHeight * scale;
-
-
-    const offsetX =
-        (
-            rect.width -
-            displayedWidth
-        ) / 2;
+    const elementAspect =
+        elementWidth /
+        elementHeight;
 
 
-    const offsetY =
-        (
-            rect.height -
-            displayedHeight
-        ) / 2;
+    let displayedWidth;
+    let displayedHeight;
+
+    let offsetX;
+    let offsetY;
+
+
+    if (
+        videoAspect >
+        elementAspect
+    ) {
+
+        displayedWidth =
+            elementWidth;
+
+        displayedHeight =
+            elementWidth /
+            videoAspect;
+
+        offsetX = 0;
+
+        offsetY =
+            (
+                elementHeight -
+                displayedHeight
+            ) / 2;
+
+    } else {
+
+        displayedHeight =
+            elementHeight;
+
+        displayedWidth =
+            elementHeight *
+            videoAspect;
+
+        offsetX =
+            (
+                elementWidth -
+                displayedWidth
+            ) / 2;
+
+        offsetY = 0;
+
+    }
 
 
     const x =
@@ -443,7 +439,9 @@ function getPhoneCoordinates(
             event.clientX -
             rect.left -
             offsetX
-        ) / scale;
+        ) /
+        displayedWidth *
+        videoWidth;
 
 
     const y =
@@ -451,58 +449,61 @@ function getPhoneCoordinates(
             event.clientY -
             rect.top -
             offsetY
-        ) / scale;
-
-
-    /*
-     * Ignore clicks in the black bars.
-     */
-
-    if (
-        x < 0 ||
-        y < 0 ||
-        x > videoWidth ||
-        y > videoHeight
-    ) {
-
-        return null;
-
-    }
+        ) /
+        displayedHeight *
+        videoHeight;
 
 
     return {
-        x: Math.round(x),
-        y: Math.round(y)
+
+        x: Math.max(
+            0,
+            Math.min(
+                videoWidth,
+                x
+            )
+        ),
+
+        y: Math.max(
+            0,
+            Math.min(
+                videoHeight,
+                y
+            )
+        )
+
     };
 
 }
 
 
-/* ============================================================
-   LEFT CLICK
-   ============================================================ */
+/* ==========================================================
+   MOUSE MOVE
+========================================================== */
 
-screen.addEventListener(
-    "click",
+video.addEventListener(
+    "mousemove",
     event => {
 
         const pos =
-            getPhoneCoordinates(
+            getScreenCoordinates(
                 event
             );
-
 
         if (!pos)
             return;
 
 
-        sendControl({
+        send({
 
-            type: "click",
+            type:
+                "mouse_move",
 
-            x: pos.x,
+            x:
+                pos.x,
 
-            y: pos.y
+            y:
+                pos.y
 
         });
 
@@ -510,19 +511,25 @@ screen.addEventListener(
 );
 
 
-/* ============================================================
-   RIGHT CLICK
-   ============================================================ */
+/* ==========================================================
+   MOUSE BUTTONS
+========================================================== */
 
-screen.addEventListener(
-    "contextmenu",
+video.addEventListener(
+    "mousedown",
     event => {
 
         event.preventDefault();
 
 
+        const button =
+            event.button === 2
+                ? "right"
+                : "left";
+
+
         const pos =
-            getPhoneCoordinates(
+            getScreenCoordinates(
                 event
             );
 
@@ -531,13 +538,27 @@ screen.addEventListener(
             return;
 
 
-        sendControl({
+        send({
 
-            type: "rightclick",
+            type:
+                "mouse_move",
 
-            x: pos.x,
+            x:
+                pos.x,
 
-            y: pos.y
+            y:
+                pos.y
+
+        });
+
+
+        send({
+
+            type:
+                "mouse_down",
+
+            button:
+                button
 
         });
 
@@ -545,40 +566,230 @@ screen.addEventListener(
 );
 
 
-/* ============================================================
+video.addEventListener(
+    "mouseup",
+    event => {
+
+        event.preventDefault();
+
+
+        const button =
+            event.button === 2
+                ? "right"
+                : "left";
+
+
+        send({
+
+            type:
+                "mouse_up",
+
+            button:
+                button
+
+        });
+
+    }
+);
+
+
+/* Disable browser context menu */
+
+video.addEventListener(
+    "contextmenu",
+    event => {
+
+        event.preventDefault();
+
+    }
+);
+
+
+/* ==========================================================
+   MOUSE WHEEL
+========================================================== */
+
+video.addEventListener(
+    "wheel",
+    event => {
+
+        event.preventDefault();
+
+
+        send({
+
+            type:
+                "mouse_scroll",
+
+            amount:
+                Math.round(
+                    -event.deltaY / 40
+                )
+
+        });
+
+    },
+    {
+        passive: false
+    }
+);
+
+
+/* ==========================================================
    KEYBOARD
-   ============================================================ */
+========================================================== */
 
 document.addEventListener(
     "keydown",
     event => {
 
         /*
-         * Don't interfere with actual
-         * text fields if we add any later.
-         */
-
-        if (
-            event.target.tagName ===
-            "INPUT" ||
-
-            event.target.tagName ===
-            "TEXTAREA"
-        ) {
-
-            return;
-
-        }
-
+           Don't let the browser interpret
+           things like Ctrl+L, F5, etc.
+        */
 
         event.preventDefault();
 
 
-        sendControl({
+        let key =
+            event.key;
 
-            type: "key",
 
-            key: event.key
+        /*
+           pyautogui uses names such as:
+
+           enter
+           escape
+           backspace
+           shift
+           ctrl
+           alt
+           tab
+           space
+           up
+           down
+           left
+           right
+        */
+
+        const mapping = {
+
+            "Enter":
+                "enter",
+
+            "Escape":
+                "esc",
+
+            "Backspace":
+                "backspace",
+
+            "Tab":
+                "tab",
+
+            "Shift":
+                "shift",
+
+            "Control":
+                "ctrl",
+
+            "Alt":
+                "alt",
+
+            "Meta":
+                "win",
+
+            " ":
+                "space",
+
+            "ArrowUp":
+                "up",
+
+            "ArrowDown":
+                "down",
+
+            "ArrowLeft":
+                "left",
+
+            "ArrowRight":
+                "right",
+
+            "Delete":
+                "delete",
+
+            "Home":
+                "home",
+
+            "End":
+                "end",
+
+            "PageUp":
+                "pageup",
+
+            "PageDown":
+                "pagedown",
+
+            "Insert":
+                "insert",
+
+            "CapsLock":
+                "capslock",
+
+            "F1":
+                "f1",
+
+            "F2":
+                "f2",
+
+            "F3":
+                "f3",
+
+            "F4":
+                "f4",
+
+            "F5":
+                "f5",
+
+            "F6":
+                "f6",
+
+            "F7":
+                "f7",
+
+            "F8":
+                "f8",
+
+            "F9":
+                "f9",
+
+            "F10":
+                "f10",
+
+            "F11":
+                "f11",
+
+            "F12":
+                "f12"
+
+        };
+
+
+        if (
+            mapping[key]
+        ) {
+
+            key =
+                mapping[key];
+
+        }
+
+
+        send({
+
+            type:
+                "key_down",
+
+            key:
+                key.toLowerCase()
 
         });
 
@@ -586,15 +797,150 @@ document.addEventListener(
 );
 
 
-/* ============================================================
+document.addEventListener(
+    "keyup",
+    event => {
+
+        event.preventDefault();
+
+
+        let key =
+            event.key;
+
+
+        const mapping = {
+
+            "Enter":
+                "enter",
+
+            "Escape":
+                "esc",
+
+            "Backspace":
+                "backspace",
+
+            "Tab":
+                "tab",
+
+            "Shift":
+                "shift",
+
+            "Control":
+                "ctrl",
+
+            "Alt":
+                "alt",
+
+            "Meta":
+                "win",
+
+            " ":
+                "space",
+
+            "ArrowUp":
+                "up",
+
+            "ArrowDown":
+                "down",
+
+            "ArrowLeft":
+                "left",
+
+            "ArrowRight":
+                "right",
+
+            "Delete":
+                "delete",
+
+            "Home":
+                "home",
+
+            "End":
+                "end",
+
+            "PageUp":
+                "pageup",
+
+            "PageDown":
+                "pagedown",
+
+            "Insert":
+                "insert",
+
+            "CapsLock":
+                "capslock",
+
+            "F1":
+                "f1",
+
+            "F2":
+                "f2",
+
+            "F3":
+                "f3",
+
+            "F4":
+                "f4",
+
+            "F5":
+                "f5",
+
+            "F6":
+                "f6",
+
+            "F7":
+                "f7",
+
+            "F8":
+                "f8",
+
+            "F9":
+                "f9",
+
+            "F10":
+                "f10",
+
+            "F11":
+                "f11",
+
+            "F12":
+                "f12"
+
+        };
+
+
+        if (
+            mapping[key]
+        ) {
+
+            key =
+                mapping[key];
+
+        }
+
+
+        send({
+
+            type:
+                "key_up",
+
+            key:
+                key.toLowerCase()
+
+        });
+
+    }
+);
+
+
+/* ==========================================================
    START
-   ============================================================ */
+========================================================== */
 
 connectWebSocket();
 
-
-startVideo().catch(
-    error => {
+startVideo()
+    .catch(error => {
 
         console.error(
             "Video error:",
@@ -602,15 +948,12 @@ startVideo().catch(
         );
 
         setStatus(
-            "Could not connect to scrcpy",
-            "error"
+            "Connection failed"
         );
 
-    }
-);
+    });
 
 </script>
 
 </body>
-
 </html>
